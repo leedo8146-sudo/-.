@@ -1,12 +1,15 @@
-import { kv } from "@vercel/kv";
+import { createClient } from "@vercel/kv";
 import { NextResponse } from "next/server";
 
-// 브라우저가 예전 에러를 기억(캐시)하지 못하도록 방지하는 설정
 export const dynamic = "force-dynamic";
+
+// Vercel이 준 단 한 줄짜리 통합 주소(KV_URL)를 통째로 집어넣어 연결하는 최신 방식
+const kv = createClient({
+  url: process.env.KV_URL,
+});
 
 export async function GET() {
   try {
-    // 키 이름을 시스템이 가장 잘 인식하는 대시(-) 형태로 변경
     const stayGames = await kv.get("monty-stay-games");
     const stayWins = await kv.get("monty-stay-wins");
     const switchGames = await kv.get("monty-switch-games");
