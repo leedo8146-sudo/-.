@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// Vercel이 준 단 한 줄짜리 통합 주소(KV_URL)를 직접 연결하는 방식
+// 환경 변수에 등록된 진짜 이름인 REDIS_URL을 읽어오도록 수정했습니다!
 const kv = createClient({
-  url: process.env.KV_URL,
+  url: process.env.REDIS_URL,
 });
 
 export async function GET() {
