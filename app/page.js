@@ -27,7 +27,6 @@ export default function MontyHall() {
   const [communityLoading, setCommunityLoading] = useState(false);
   const [communityError, setCommunityError] = useState(false);
 
-  // 첫 진입 시 실시간 통계 불러오기
   useEffect(() => {
     loadCommunity();
   }, []);
@@ -54,30 +53,29 @@ export default function MontyHall() {
     await submitEntry(strategy, win);
   }
 
-  // 서버 API를 통해 진짜 DB(Vercel KV)에 저장
   async function submitEntry(strategy, win) {
     setSubmitState("saving");
     try {
-      const res = await fetch("/api", {
+      // 상대 경로 주소를 피하고 명확하게 api 연동
+      const res = await fetch("./api", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ strategy, win }),
       });
       if (!res.ok) throw new Error();
       const result = await res.json();
-      setCommunity(result.data); // 서버가 준 최신 통계로 즉시 업데이트
+      setCommunity(result.data);
       setSubmitState("saved");
     } catch (e) {
       setSubmitState("error");
     }
   }
 
-  // 서버 API를 통해 진짜 DB(Vercel KV)에서 데이터 가져오기
   async function loadCommunity() {
     setCommunityLoading(true);
     setCommunityError(false);
     try {
-      const res = await fetch("/api");
+      const res = await fetch("./api");
       if (!res.ok) throw new Error();
       const data = await res.json();
       setCommunity(data);
