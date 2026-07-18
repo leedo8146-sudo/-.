@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// Vercel이 준 단 한 줄짜리 통합 주소(KV_URL)를 통째로 집어넣어 연결하는 최신 방식
+// Vercel이 준 단 한 줄짜리 통합 주소(KV_URL)를 직접 연결하는 방식
 const kv = createClient({
   url: process.env.KV_URL,
 });
