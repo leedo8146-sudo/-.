@@ -22,13 +22,12 @@ export default function MontyHall() {
   const [lastWin, setLastWin] = useState(null);
 
   const [submitState, setSubmitState] = useState("idle");
-  const [submitErrorDetail, setSubmitErrorDetail] = useState("");
   const [showStats, setShowStats] = useState(false);
   const [community, setCommunity] = useState(null);
   const [communityLoading, setCommunityLoading] = useState(false);
   const [communityError, setCommunityError] = useState(false);
 
-  // 컴포넌트 진입 시 바로 기존 데이터 로딩
+  // 첫 진입 시 실시간 통계 불러오기
   useEffect(() => {
     loadCommunity();
   }, []);
@@ -53,81 +52,35 @@ export default function MontyHall() {
     setLastWin(win);
     setStage("result");
     await submitEntry(strategy, win);
-    await loadCommunity();
   }
 
+  // 서버 API를 통해 진짜 DB(Vercel KV)에 저장
   async function submitEntry(strategy, win) {
     setSubmitState("saving");
-    setSubmitErrorDetail("");
-    if (typeof window === "undefined" || !window.storage || typeof window.storage.set !== "function") {
-      setSubmitErrorDetail("window.storage 를 사용할 수 없습니다");
+    try {
+      const res = await fetch("/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy, win }),
+      });
+      if (!res.ok) throw new Error();
+      const result = await res.json();
+      setCommunity(result.data); // 서버가 준 최신 통계로 즉시 업데이트
+      setSubmitState("saved");
+    } catch (e) {
       setSubmitState("error");
-      return;
     }
-    const key = `entry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const maxAttempts = 3;
-    let lastError = "";
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const result = await window.storage.set(key, JSON.stringify({ strategy, win }), true);
-        if (result) {
-          setSubmitState("saved");
-          return;
-        }
-        lastError = "storage.set이 null을 반환했습니다";
-      } catch (e) {
-        lastError = (e && (e.message || e.toString())) || "알 수 없는 오류";
-        console.error(`저장 시도 ${attempt} 실패:`, e);
-      }
-      if (attempt < maxAttempts) {
-        await new Promise((res) => setTimeout(res, 400 * attempt));
-      }
-    }
-    setSubmitErrorDetail(lastError);
-    setSubmitState("error");
   }
 
-  async function retrySubmit() {
-    if (lastStrategy === null || lastWin === null) return;
-    await submitEntry(lastStrategy, lastWin);
-    await loadCommunity();
-  }
-
+  // 서버 API를 통해 진짜 DB(Vercel KV)에서 데이터 가져오기
   async function loadCommunity() {
-    if (typeof window === "undefined" || !window.storage || typeof window.storage.list !== "function") {
-      return;
-    }
     setCommunityLoading(true);
     setCommunityError(false);
     try {
-      const listResult = await window.storage.list("entry_", true);
-      const keys = listResult && listResult.keys ? listResult.keys : [];
-      const agg = { stay: { games: 0, wins: 0 }, switch: { games: 0, wins: 0 } };
-      const chunkSize = 25;
-      for (let i = 0; i < keys.length; i += chunkSize) {
-        const chunk = keys.slice(i, i + chunkSize);
-        const values = await Promise.all(
-          chunk.map(async (k) => {
-            try {
-              const r = await window.storage.get(k, true);
-              return r ? r.value : null;
-            } catch (e) {
-              return null;
-            }
-          })
-        );
-        values.forEach((v) => {
-          if (!v) return;
-          try {
-            const parsed = JSON.parse(v);
-            if (parsed.strategy === "stay" || parsed.strategy === "switch") {
-              agg[parsed.strategy].games += 1;
-              if (parsed.win) agg[parsed.strategy].wins += 1;
-            }
-          } catch (e) {}
-        });
-      }
-      setCommunity(agg);
+      const res = await fetch("/api");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setCommunity(data);
     } catch (e) {
       setCommunityError(true);
     } finally {
@@ -150,7 +103,6 @@ export default function MontyHall() {
   const switchRate = community && community.switch.games ? (100 * community.switch.wins) / community.switch.games : 0;
   const totalParticipants = community ? community.stay.games + community.switch.games : 0;
 
-  // [버그 수정] 게이지 바를 채우기 위한 '선택 비율' 계산식 독립 분리
   const stayChoiceRate = totalParticipants ? (100 * community.stay.games) / totalParticipants : 0;
   const switchChoiceRate = totalParticipants ? (100 * community.switch.games) / totalParticipants : 0;
 
@@ -288,35 +240,22 @@ export default function MontyHall() {
               <p className="text-[10px] font-mono text-[#9aa5ae] mb-2">
                 {submitState === "saving" && "결과 저장 중..."}
                 {submitState === "saved" && "결과가 공동 통계에 반영되었습니다"}
-                {submitState === "error" && "결과 저장에 실패했어요 (통계에는 반영되지 않음)"}
+                {submitState === "error" && "결과 저장에 실패했어요 (통계에 반영 안 됨)"}
               </p>
-              {submitState === "error" && (
-                <>
-                  {submitErrorDetail && (
-                    <p className="text-[10px] font-mono text-[#b23b3b] mb-1 break-all">{submitErrorDetail}</p>
-                  )}
-                  <button
-                    onClick={retrySubmit}
-                    className="text-[11px] font-mono text-[#a1663a] hover:underline mb-4 inline-block"
-                  >
-                    다시 저장하기
-                  </button>
-                </>
-              )}
-              <div className="mt-2">
-              <button
-                onClick={playAgain}
-                className="px-6 py-2.5 rounded-md bg-[#26313f] text-white font-semibold text-sm hover:bg-[#374a5e] transition-colors mr-3"
-              >
-                다시 플레이
-              </button>
-              <button
-                onClick={() => setShowStats(true)}
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-md border-2 border-[#a1663a] text-[#a1663a] font-semibold text-sm hover:bg-[#a1663a] hover:text-white transition-colors"
-              >
-                <BarChart3 size={16} />
-                통계 보기
-              </button>
+              <div className="mt-4">
+                <button
+                  onClick={playAgain}
+                  className="px-6 py-2.5 rounded-md bg-[#26313f] text-white font-semibold text-sm hover:bg-[#374a5e] transition-colors mr-3"
+                >
+                  다시 플레이
+                </button>
+                <button
+                  onClick={() => setShowStats(true)}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-md border-2 border-[#a1663a] text-[#a1663a] font-semibold text-sm hover:bg-[#a1663a] hover:text-white transition-colors"
+                >
+                  <BarChart3 size={16} />
+                  통계 보기
+                </button>
               </div>
             </div>
           )}
@@ -375,10 +314,9 @@ export default function MontyHall() {
                     </div>
                   </div>
 
-                  {/* [버그 수정 완료] 선택 참가 비율에 따라 가로바가 터지지 않고 100% 비율로 안전하게 표기됨 */}
                   <div className="w-full h-4 rounded-full bg-[#eceeea] overflow-hidden flex mb-2">
-                    <div className="h-full bg-[#26313f]" style={{ width: `${stayChoiceRate}%` }} title="유지 선택 비율" />
-                    <div className="h-full bg-[#a1663a]" style={{ width: `${switchChoiceRate}%` }} title="교체 선택 비율" />
+                    <div className="h-full bg-[#26313f]" style={{ width: `${stayChoiceRate}%` }} />
+                    <div className="h-full bg-[#a1663a]" style={{ width: `${switchChoiceRate}%` }} />
                   </div>
                   <div className="flex justify-between text-[10px] text-[#9aa5ae] font-mono mb-6">
                     <span>유지 선택 ({stayChoiceRate.toFixed(0)}%)</span>
